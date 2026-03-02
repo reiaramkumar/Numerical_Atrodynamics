@@ -476,6 +476,14 @@ def create_simulation_bodies() -> environment.SystemOfBodies:
 
     """
 
-    bodies = XXXX
-
+    bodies_to_create = ['Sun', 'Earth', 'Mars']
+    global_frame_origin = 'Sun'
+    global_frame_orientation = 'J2000'     # ECLIPJ2000 or J2000?
+    body_settings = environment_setup.get_default_body_settings(
+        bodies_to_create,
+        global_frame_origin,
+        global_frame_orientation
+    )
+    body_settings.add_empty_settings('Spacecraft')
+    bodies = environment_setup.create_system_of_bodies(body_settings)
     return bodies
