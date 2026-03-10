@@ -9,7 +9,7 @@ a copy of the license with this file. If not, please or visit:
 http://tudat.tudelft.nl/LICENSE.
 """
 
-from interplanetary_transfer_helper_functions import *
+from interplanetary_transfer_helper_functions_Q1 import *
 
 # Load spice kernels.
 spice.load_standard_kernels()
