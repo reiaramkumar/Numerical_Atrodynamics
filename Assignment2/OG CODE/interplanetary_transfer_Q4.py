@@ -9,7 +9,7 @@ a copy of the license with this file. If not, please or visit:
 http://tudat.tudelft.nl/LICENSE.
 """
 
-from interplanetary_transfer_helper_functions_Q1 import *
+from interplanetary_transfer_helper_functions_Q4 import *
 
 # Load spice kernels.
 spice.load_standard_kernels()
@@ -17,90 +17,133 @@ spice.load_standard_kernels()
 # Define directory where simulation output will be written
 output_directory = "./SimulationOutput/"
 
-###########################################################################
-# RUN CODE FOR QUESTION 5 #################################################
-###########################################################################
+
+
+# REQUIREMENT:
+# - one arc model
+# - one constant thrust vector over the full transfer
+
+
+
+
 
 if __name__ == "__main__":
 
+    #### 4b #### - one arc case over full transfer
+    # pipeline:
+    # lamberts arc --> initial state --> nominal_propagator --> sensitivity_parameter --> variational_equations
+
     # Create body objects
-    bodies = create_simulation_bodies()
+    bodies_1arc = create_simulation_bodies()
 
     # Create Lambert arc state model
-    lambert_arc_ephemeris = get_lambert_problem_result(
-        bodies, target_body, departure_epoch, arrival_epoch
-    )
+    lambert_arc_ephemeris_1arc = get_lambert_problem_result(bodies_1arc,
+                                                            target_body,
+                                                            departure_epoch,
+                                                            arrival_epoch)
 
-    # Set arc length
-    number_of_arcs = 10
-    arc_length = XXXX
+    initial_time_1arc = departure_epoch
+    final_time_1arc = arrival_epoch
 
-    for arc_index in range(number_of_arcs):
+    initial_state_1arc = lambert_arc_ephemeris_1arc.cartesian_state(initial_time_1arc)
 
-        # Compute start and end time for current arc
-        current_arc_initial_time = XXXX
-        current_arc_final_time = XXXX
+    termination_settings_1arc = propagation_setup.propagator.time_termination(final_time_1arc)
 
-        # Get propagator settings for perturbed forward arc
-        arc_initial_state = lambert_arc_ephemeris.cartesian_state(
-            current_arc_initial_time
-        )
+    # NOMINAL PROPAGATION  AND SENSITIVITY PARAMETER#
+    nominal_propagator_settings_1arc = get_perturbed_propagator_settings(bodies_1arc,
+                                                                         initial_state_1arc,
+                                                                         initial_time_1arc,
+                                                                         termination_settings_1arc,
+                                                                         empirical_acceleration = np.zeros(3))
 
-        termination_settings = propagation_setup.propagator.time_termination(
-            current_arc_final_time
-        )
+    sensitivity_parameters_1arc = get_sensitivity_parameter_set(nominal_propagator_settings_1arc,
+                                                                bodies_1arc)
 
-        propagator_settings = get_perturbed_propagator_settings(
-            bodies, arc_initial_state, current_arc_initial_time, termination_settings
-        )
 
-        ###########################################################################
-        # PROPAGATE NOMINAL TRAJECTORY AND VARIATIONAL EQUATIONS ##################
-        ###########################################################################
+    variational_equations_1arc = numerical_simulation.create_variational_equations_solver(bodies_1arc,
+                                                                                          nominal_propagator_settings_1arc,
+                                                                                          sensitivity_parameters_1arc)
 
-        sensitivity_parameters = get_sensitivity_parameter_set(
-            propagator_settings, bodies
-        )
-        variational_equations_simulator = (
-            numerical_simulation.create_variational_equations_solver(
-                bodies, propagator_settings, sensitivity_parameters
-            )
-        )
 
-        state_transition_result = (
-            variational_equations_simulator.state_transition_matrix_history
-        )
-        nominal_integration_result = variational_equations_simulator.state_history
 
-        # Computer arc initial state before applying variations
-        initial_epoch = list(state_transition_result.keys())[0]
-        original_initial_state = nominal_integration_result[initial_epoch]
+    nominal_state_history_1arc = variational_equations_1arc.state_history
+    final_epoch_1arc = list(nominal_state_history_1arc.keys())[-1]
+    x_nom_final_1arc = nominal_state_history_1arc[final_epoch_1arc]
+    r_nom_final_1arc = x_nom_final_1arc[0:3]
 
-        ###########################################################################
-        # START ANALYSIS ALGORITHM FOR QUESTION 4 #################################
-        ###########################################################################
+    sensitivity_histories_1arc = variational_equations_1arc.sensitivity_matrix_history
+    S_final_1arc = sensitivity_histories_1arc[final_epoch_1arc]
+    S_r_1arc = S_final_1arc[0:3, 0:3]
 
-        # This vector will hold the maximum permitted initial state perturbations for which the linearization
-        # is valid (for the current arc. The vector is initialized to 0, and each of its 6 entries is computed
-        # in the 6 iterations of the coming for loop (that runs over the iteration variable 'entry')
-        permitted_perturbations = np.array([0, 0, 0, 0, 0, 0])
+    # final target position from lambert
+    r_bar_target_1arc = lambert_arc_ephemeris_1arc.cartesian_state(arrival_epoch)[0:3]
 
-        # Iterate over all initial state entries
-        for entry in range(6):
+    delta_r_1arc = r_bar_target_1arc - r_nom_final_1arc
 
-            # Define (iterative) algorithm to compute current entry of 'permitted_perturbations'
-            # General structure: define an initial state perturbation (perturbed_initial_state variable),
-            # compute epsilon_x (see assignment), and iterate your algorithm until convergence.
 
-            while XXXX:
+    print("x_nom_final shape:", x_nom_final_1arc.shape)
+    print("r_nom_final:", r_nom_final_1arc)
+    print("r_bar_target:", r_bar_target_1arc)
+    print("delta_r:", delta_r_1arc)
+    print("S_final shape:", S_final_1arc.shape)
+    print("S_r shape:", S_r_1arc.shape)
+    print("S_r:\n", S_r_1arc)
 
-                # Reset propagator settings with perturbed initial state
-                perturbed_initial_state = XXXX
-                propagator_settings.initial_states = perturbed_initial_state
+    # PROPAGATING WITH THE THRUST VECTOR (p) #
+    # computing thrust vector
+    p_b = np.linalg.pinv(S_r_1arc).dot(delta_r_1arc)
+    p_b = p_b.reshape(3)
 
-                XXXX
+    corrected_propagator_settings_1arc = get_perturbed_propagator_settings( bodies_1arc,
+                                                                            initial_state_1arc,
+                                                                            initial_time_1arc,
+                                                                            termination_settings_1arc,
+                                                                            empirical_acceleration = p_b)
 
-                # Compute epsilon_x
-                epsilon_x = XXXX
 
-            permitted_perturbations[entry] = XXXX
+    dynamics_simulator_1arc = numerical_simulation.create_dynamics_simulator(bodies_1arc,
+                                                                             corrected_propagator_settings_1arc)
+
+
+
+    state_history_corrected_1arc = dynamics_simulator_1arc.state_history
+
+    final_epoch_corrected_1arc = list(state_history_corrected_1arc.keys())[-1]
+    x_cor_final_1arc = state_history_corrected_1arc[final_epoch_corrected_1arc]
+    r_cor_final_1arc = x_cor_final_1arc[0:3]
+
+    residual_corrected_1arc = r_bar_target_1arc - r_cor_final_1arc
+
+    row_13 = np.hstack([[final_epoch_corrected_1arc], x_cor_final_1arc])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    #
+    # # Set arc length
+    # number_of_arcs = 10
+    # arc_length = (arrival_epoch - departure_epoch) / number_of_arcs # by length they mean the delta t for each arc
+    #
+
+
+    #
+    #
+    #     # 4a pipeline:
+    #     # predicted_x_t_f = x_t_f + S(tf) * delta_p
+    #     # this can be written in terms of pos vectors rather than state
+    #     # dp = p = [p_r, p_s, p_w]

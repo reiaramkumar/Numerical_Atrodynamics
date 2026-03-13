@@ -27,8 +27,8 @@ from tudatpy.numerical_simulation import (
 departure_epoch = 2132.212895 * constants.JULIAN_DAY
 time_of_flight = 157.9635921 * constants.JULIAN_DAY
 arrival_epoch = departure_epoch + time_of_flight
-target_body = 'Mars'
-global_frame_orientation = "ECLIPJ2000"
+target_body = 'Venus'
+global_frame_orientation = "J2000"
 fixed_step_size = 3600.0
 
 ################ HELPER FUNCTIONS: DO NOT MODIFY ########################################
@@ -338,6 +338,7 @@ def propagate_variational_equations(
         lambert_arc_initial_state,
         initial_time,
         termination_condition,
+        empirical_acceleration =np.zeros(3),
     )
 
     # Define parameters for variational equations
@@ -376,6 +377,23 @@ def get_sensitivity_parameter_set(
     parameter_settings = estimation_setup.parameter.initial_states(
         propagator_settings, bodies
     )
+
+    empirical_components = {
+        estimation_setup.parameter.EmpiricalAccelerationComponents.radial_empirical_acceleration_component:
+            [estimation_setup.parameter.EmpiricalAccelerationFunctionalShapes.constant_empirical],
+        estimation_setup.parameter.EmpiricalAccelerationComponents.along_track_empirical_acceleration_component:
+            [estimation_setup.parameter.EmpiricalAccelerationFunctionalShapes.constant_empirical],
+        estimation_setup.parameter.EmpiricalAccelerationComponents.across_track_empirical_acceleration_component:
+            [estimation_setup.parameter.EmpiricalAccelerationFunctionalShapes.constant_empirical],
+    }
+
+    parameter_settings += [
+        estimation_setup.parameter.empirical_accelerations(
+            "Spacecraft",
+            "Sun",
+            empirical_components
+        )
+    ]
 
     return estimation_setup.create_parameter_set(
         parameter_settings, bodies, propagator_settings
@@ -430,7 +448,7 @@ def get_unperturbed_propagator_settings(
         central_bodies
     )
 
-    fixed_time_step = 10.0
+    fixed_step_size = 3600.0
     integrator_settings = propagation_setup.integrator.runge_kutta_fixed_step(
         fixed_step_size, coefficient_set = propagation_setup.integrator.CoefficientSets.rk_4)
 
@@ -457,13 +475,165 @@ def get_unperturbed_propagator_settings(
         initial_time,
         integrator_settings,
         termination_condition,
-        output_variables = dependent_variables_to_save
+        output_variables = dependent_variables_to_save,
     )
 
 
     return propagator_settings
 
 
+# STUDENT CODE TASK - full function (except signature and return)
+def get_perturbed_propagator_settings(
+    bodies: environment.SystemOfBodies,
+    initial_state: np.ndarray,
+    initial_time: float,
+    termination_condition: propagation_setup.propagator.PropagationTerminationSettings,
+    empirical_acceleration: np.ndarray = np.zeros(3),
+) -> propagation_setup.propagator.SingleArcPropagatorSettings:
+    """
+    Creates the propagator settings for a perturbed trajectory.
+
+    Parameters
+    ----------
+    bodies : environment.SystemOfBodies
+        Body objects defining the physical simulation environment
+
+    initial_state : np.ndarray
+        Cartesian initial state of the vehicle in the simulation
+
+    initial_time : float
+        Epoch since J2000 at which the propagation starts
+
+    termination_condition : propagation_setup.propagator.PropagationTerminationSettings
+        Settings for condition upon which the propagation will be terminated
+
+    Return
+    ------
+    Propagation settings of the perturbed trajectory.
+    """
+
+    # Define bodies that are propagated, and their central bodies of propagation.
+    bodies_to_propagate = ["Spacecraft"]
+    central_bodies = ["Sun"]
+
+    empirical_acceleration = np.array(empirical_acceleration, dtype= np.float64).flatten()
+    empirical_acceleration_settings = propagation_setup.acceleration.empirical(constant_acceleration = empirical_acceleration)
+
+    # Define accelerations acting on vehicle.
+    acceleration_settings_on_vehicle = dict(
+
+        Sun=
+        [
+            propagation_setup.acceleration.point_mass_gravity(),
+            propagation_setup.acceleration.radiation_pressure(),
+            empirical_acceleration_settings
+        ],
+
+        Moon=
+        [
+            propagation_setup.acceleration.point_mass_gravity()
+        ],
+
+        Venus=
+        [
+            propagation_setup.acceleration.point_mass_gravity()
+        ],
+
+        Earth=
+        [
+            propagation_setup.acceleration.point_mass_gravity()
+        ],
+
+        Mars=
+        [
+            propagation_setup.acceleration.point_mass_gravity()
+        ],
+
+        Jupiter=
+        [
+            propagation_setup.acceleration.point_mass_gravity()
+        ],
+
+        Saturn=
+        [
+            propagation_setup.acceleration.point_mass_gravity()
+        ],
+
+    )
+
+    # Create global acceleration dictionary.
+    acceleration_settings = {"Spacecraft": acceleration_settings_on_vehicle}
+
+    # Create acceleration models.
+    acceleration_models = propagation_setup.create_acceleration_models(
+        bodies, acceleration_settings, bodies_to_propagate, central_bodies
+    )
+
+    # Define initial state.
+    system_initial_state = initial_state
+
+    # Define required outputs
+    # As required by the question dep variable saved in the order: [keplerian elements (6),
+    #
+    # Total Variables:
+
+    dependent_variables_to_save = [
+
+        propagation_setup.dependent_variable.keplerian_state("Spacecraft", "Sun"),
+
+
+
+        propagation_setup.dependent_variable.single_acceleration(propagation_setup.acceleration.point_mass_gravity_type,
+                                                                 "Spacecraft", "Mars"),
+        propagation_setup.dependent_variable.single_acceleration(propagation_setup.acceleration.point_mass_gravity_type,
+                                                                 "Spacecraft", "Earth"),
+        propagation_setup.dependent_variable.single_acceleration(propagation_setup.acceleration.point_mass_gravity_type,
+                                                                 "Spacecraft", "Moon"),
+        propagation_setup.dependent_variable.single_acceleration(propagation_setup.acceleration.point_mass_gravity_type,
+                                                                 "Spacecraft", "Venus"),
+        propagation_setup.dependent_variable.single_acceleration(propagation_setup.acceleration.point_mass_gravity_type,
+                                                                 "Spacecraft", "Jupiter"),
+        propagation_setup.dependent_variable.single_acceleration(propagation_setup.acceleration.point_mass_gravity_type,
+                                                                 "Spacecraft", "Saturn"),
+        propagation_setup.dependent_variable.single_acceleration(propagation_setup.acceleration.point_mass_gravity_type,
+                                                                 "Spacecraft", "Sun"),
+
+
+        propagation_setup.dependent_variable.single_acceleration(
+            propagation_setup.acceleration.cannonball_radiation_pressure_type, "Spacecraft", "Sun"),
+
+    ]
+
+    # Create numerical integrator settings.
+    fixed_step_size = 10.0
+    integrator_settings = propagation_setup.integrator.runge_kutta_fixed_step(
+        fixed_step_size, coefficient_set=propagation_setup.integrator.CoefficientSets.rk_4
+    )
+
+    # Create propagation settings.
+    # termination_settings = propagation_setup.propagator.time_termination(
+    #     simulation_end_epoch
+    # ) --> done in main code
+
+    propagator_settings = propagation_setup.propagator.translational(
+        central_bodies,
+        acceleration_models,
+        bodies_to_propagate,
+        system_initial_state,
+        initial_time,
+        integrator_settings,
+        termination_condition,
+        output_variables=dependent_variables_to_save,
+    )
+
+    # propagator_settings.print_settings.print_initial_and_final_conditions = True
+
+    return propagator_settings
+
+
+# STUDENT CODE TASK - full function (except signature and return)
+# NOTE: Keep this function the same for each question (it does no harm if bodies are
+# added that are not used)
 def create_simulation_bodies() -> environment.SystemOfBodies:
     """
     Creates the body objects required for the simulation, using the
@@ -480,7 +650,8 @@ def create_simulation_bodies() -> environment.SystemOfBodies:
 
     """
 
-    bodies_to_create = ['Sun', 'Earth', 'Mars']
+    bodies_to_create = ['Sun', 'Moon', 'Earth', 'Mars', 'Venus', 'Jupiter', 'Saturn']
+
     global_frame_origin = 'Sun'
     global_frame_orientation = 'J2000'     # ECLIPJ2000 or J2000?
     body_settings = environment_setup.get_default_body_settings(
@@ -490,4 +661,27 @@ def create_simulation_bodies() -> environment.SystemOfBodies:
     )
     body_settings.add_empty_settings('Spacecraft')
     bodies = environment_setup.create_system_of_bodies(body_settings)
+
+    reference_area = 20.0  # m2
+    radiation_pressure_coefficient = 1.2
+    bodies.get_body('Spacecraft').mass = 1000.0
+    # body_settings.add_empty_settings("Spacecraft")
+    # bodies = environment_setup.create_system_of_bodies(body_settings) --> fn already recieves it as input
+
+
+
+    # occulting_bodies = [""]
+    vehicle_target_settings = environment_setup.radiation_pressure.cannonball_radiation_target(
+        reference_area,
+        radiation_pressure_coefficient,
+        {"Sun": []}
+    )
+
+    environment_setup.add_radiation_pressure_target_model(
+        bodies,
+        "Spacecraft",
+        vehicle_target_settings
+    )
+
+
     return bodies

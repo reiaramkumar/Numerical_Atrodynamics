@@ -1,8 +1,8 @@
-""" 
+"""
 Copyright (c) 2010-2020, Delft University of Technology
 All rigths reserved
 
-This file is part of the Tudat. Redistribution and use in source and 
+This file is part of the Tudat. Redistribution and use in source and
 binary forms, with or without modification, are permitted exclusively
 under the terms of the Modified BSD license. You should have received
 a copy of the license with this file. If not, please or visit:
@@ -18,9 +18,6 @@ spice.load_standard_kernels()
 # Define directory where simulation output will be written
 output_directory = "./SimulationOutput/"
 
-###########################################################################
-# RUN CODE FOR QUESTION 2 #################################################
-###########################################################################
 
 if __name__ == "__main__":
 
@@ -60,29 +57,32 @@ if __name__ == "__main__":
     departure_epoch_ciii = None
     arrival_epoch_ciii = None
     t = departure_epoch
+
+    earth_state_vec = spice.get_body_cartesian_state_at_epoch('Earth', 'Sun', 'J2000', 'NONE', t)
+    venus_state_vec = spice.get_body_cartesian_state_at_epoch('Venus', 'Sun', 'J2000', 'NONE', t)
+
+    a_earth = element_conversion.cartesian_to_keplerian(earth_state_vec, mu_sun)
+    a_earth = a_earth[0]
+    a_venus = element_conversion.cartesian_to_keplerian(venus_state_vec, mu_sun)
+    a_venus = a_venus[0]
+    r_soi_earth = a_earth * (mass_earth / mass_sun) ** (2 / 5)
+    r_soi_venus = a_venus * (mass_venus / mass_sun) ** (2 / 5)
+
+
     while t <= arrival_epoch:
         r_cart_state_sc = lambert_arc_ephemeris.cartesian_state(t)
         r_cart_sc = r_cart_state_sc[:3]
 
-        r_earth = spice.get_body_cartesian_state_at_epoch('Earth', 'Sun', 'J2000', 'NONE', t)
-        r_venus = spice.get_body_cartesian_state_at_epoch('Venus', 'Sun', 'J2000', 'NONE', t)
-
-        a_earth = element_conversion.cartesian_to_keplerian(r_earth, mu_sun)
-        a_earth = a_earth[0]
-        a_venus = element_conversion.cartesian_to_keplerian(r_venus, mu_sun)
-        a_venus = a_venus[0]
-
-        r_earth = r_earth[0:3]
-        r_venus = r_venus[0:3]
-
-        r_soi_earth = a_earth * (mass_earth / mass_sun) ** (2 / 5)
-        r_soi_venus = a_venus * (mass_venus / mass_sun) ** (2 / 5)
+        r_earth = spice.get_body_cartesian_state_at_epoch('Earth', 'Sun', 'J2000', 'NONE', t)[:3]
+        r_venus = spice.get_body_cartesian_state_at_epoch('Venus', 'Sun', 'J2000', 'NONE', t)[:3]
 
         if np.linalg.norm(r_cart_sc - r_earth) >= r_soi_earth and departure_epoch_ciii is None:
             departure_epoch_ciii = t
+            print(departure_epoch_ciii)
 
         if np.linalg.norm(r_cart_sc - r_venus) <= r_soi_venus and departure_epoch_ciii is not None:
             arrival_epoch_ciii = t
+            print(arrival_epoch_ciii)
             break
         t+=fixed_step_size
 
@@ -90,7 +90,7 @@ if __name__ == "__main__":
     # case 4
     t_mid = (departure_epoch + arrival_epoch)/2
     departure_epoch_civ_fwd = t_mid
-    arrival_epoch_civ_fwd = arrival_epoch_cii - 3600
+    arrival_epoch_civ_fwd = arrival_epoch - 3600
     departure_epoch_civ_bwd = t_mid
     arrival_epoch_civ_bwd  = departure_epoch + 3600
 
@@ -113,8 +113,11 @@ if __name__ == "__main__":
         elif case_name == "case_iii":
             time_termination = propagation_setup.propagator.time_termination(arrival_epoch_with_buffer)
             soi_termination = propagation_setup.propagator.dependent_variable_termination(dependent_variable_settings =
-                                propagation_setup.dependent_variable.relative_distance("Spacecraft", "Venus"), limit_value = r_soi_venus, use_as_lower_limit = True)
-            termination_settings = propagation_setup.propagator.hybrid_termination([soi_termination, time_termination], fulfill_single_condition = True)
+                                propagation_setup.dependent_variable.relative_distance("Spacecraft", "Venus"),
+                                limit_value = r_soi_venus, use_as_lower_limit = True)
+
+            termination_settings = propagation_setup.propagator.hybrid_termination([soi_termination, time_termination],
+                                                                                   fulfill_single_condition = True)
 
 
         dynamics_simulator = propagate_trajectory(
@@ -143,9 +146,9 @@ if __name__ == "__main__":
     forward_termination = propagation_setup.propagator.time_termination(arrival_epoch_civ_fwd)
     backward_termination = propagation_setup.propagator.time_termination(arrival_epoch_civ_bwd)
 
-    termination_settings_iv = propagation_setup.propagator.hybrid_termination([forward_termination, backward_termination],
-                                                                              fulfill_single_condition = True)
-    dynamics_simulator = propagate_trajectory(
+    termination_settings_iv = propagation_setup.propagator.non_sequential_termination(forward_termination,
+                                                                                      backward_termination)
+    dynamics_simulator_iv = propagate_trajectory(
         departure_epoch_civ_fwd, # basically tm same for both fwd n bwd cases
         termination_settings_iv,
         bodies,
@@ -154,13 +157,13 @@ if __name__ == "__main__":
     )
 
     write_propagation_results_to_file(
-        dynamics_simulator,
+        dynamics_simulator_iv,
         lambert_arc_ephemeris,
         "Q2_" + "case_iv",
         output_directory,
     )
-    state_histories['case_iv'] = dynamics_simulator.propagation_results.state_history
-    lambert_histories['case_iv'] = get_lambert_arc_history(lambert_arc_ephemeris, state_histories[case_name])
+    state_histories['case_iv'] = dynamics_simulator_iv.propagation_results.state_history
+    lambert_histories['case_iv'] = get_lambert_arc_history(lambert_arc_ephemeris, state_histories['case_iv'])
 
     times_dict = {}
     delta_r_dict = {}
@@ -203,11 +206,10 @@ if __name__ == "__main__":
 
     # %%
 
-
-    fig,ax = plt.subplots(3,4, figsize = (14,8))
+    fig,ax = plt.subplots(3,4, figsize = (15,10))
 
     for i, case_name in enumerate(times_dict):
-        time_days = times_dict[case_name] - times_dict[case_name][0]/86400
+        time_days = (times_dict[case_name] - departure_epoch)/ 86400.0
 
         ax[0,i].plot(time_days, delta_r_dict[case_name])
         ax[0,i].set_xlabel('Time (days)')
@@ -218,7 +220,10 @@ if __name__ == "__main__":
         ax[2,i].plot(time_days, delta_a_dict[case_name])
         ax[2,i].set_xlabel('Time (days)')
         ax[2,i].set_ylabel(r'$\Delta a$ (m/s$^2$)')
-
+        # if i == 3:
+        #     ax[0,i].set_xlim(arrival_epoch_civ_bwd, arrival_epoch_civ_fwd)
+        #     ax[0,2].set_xlim(arrival_epoch_civ_bwd, arrival_epoch_civ_fwd)
+        #
     ax[0, 0].set_ylabel(r'$\Delta r$ (m)')
     ax[1, 0].set_ylabel(r'$\Delta v$ (m/s)')
     ax[2, 0].set_ylabel(r'$\Delta a$ (m/s$^2$)')

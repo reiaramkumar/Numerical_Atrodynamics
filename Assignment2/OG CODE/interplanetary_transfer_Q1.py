@@ -18,9 +18,6 @@ spice.load_standard_kernels()
 # Define directory where simulation output will be written
 output_directory = "./SimulationOutput/"
 
-###########################################################################
-# RUN CODE FOR QUESTION 1 #################################################
-###########################################################################
 
 if __name__ == "__main__":
 
@@ -28,7 +25,7 @@ if __name__ == "__main__":
     bodies = create_simulation_bodies()
 
     # Create Lambert arc state model
-    target_body = 'Mars'
+    target_body = 'Venus'
 
     lambert_arc_ephemeris = get_lambert_problem_result(
         bodies, target_body, departure_epoch, arrival_epoch
@@ -54,14 +51,23 @@ if __name__ == "__main__":
 
     # Evaluate the Lambert arc model at each of the epochs in the state_history
     lambert_history = get_lambert_arc_history(lambert_arc_ephemeris, state_history)
-
+    time = np.array(list(state_history.keys()))
+    time_days = time / constants. JULIAN_DAYS
     x_t = np.array(list(state_history))
     x_bar_t = np.array(list(lambert_history))
 
     print(x_t)
     print(x_bar_t)
 
+#.......................................................................................................................
 
+# Saving :)
+ROW_1 = np.hstack([time_days], x_t[0] )
+ROW_2 = np.hstack([time_days], x_t[-1])
+
+
+#........................................................................................................................
+# PLOT 1 - 3D TRAJECTORY
 combined_states = {}
 
 for i in state_history.keys():
@@ -70,20 +76,16 @@ for i in state_history.keys():
 fig, ax = plotting.trajectory_3d(  vehicles_states = combined_states,
                 vehicles_names = ['Spacecraft','Lambert'],
                 central_body_name = 'Sun',
-                spice_bodies = ['Earth', 'Mars'],
+                spice_bodies = ['Earth', 'Venus'],
                 frame_orientation = 'J2000',
                 center_plot = True,
                 colors = ['blue', 'red', 'green', 'orange'],
                 linestyles = ['solid','dashed','solid', 'solid']
                 )
-
-# ax.scatter(x_t[list(x_t.keys())[0]],
-#            x_t[list(x_t.keys())[1]],
-#            x_t[list(x_t.keys())[2]])
 plt.show()
 
-
-# PLOT 2 - Result between lambert targeter and numerical propagation
+#.......................................................................................................................
+# PLOT 2 - LAMBERT TARGETER VS NUMERICAL PROPAGATION
 
 time = np.array(list(state_history.keys()))
 time_days = [
@@ -92,10 +94,11 @@ time_days = [
 ]
 
 
-residual = np.abs(x_bar_t - x_t)
-fig,ax = plt.subplots(1,1, figsize=(15,10))
-ax.plot(time_days, residual)
-ax2 = ax.twinx()
-ax2.plot(time_days, x_t)
-ax2.plot(time_days, x_bar_t, linestyle = '--')
+residual = x_bar_t - x_t
+fig,ax = plt.subplots(6,1, figsize=(15,10))
+for i in range(6):
+    ax[i].plot(time_days, residual[i, :])
+
 plt.show()
+#.......................................................................................................................
+#.......................................................................................................................
