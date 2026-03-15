@@ -1,14 +1,73 @@
 import numpy as np
 from interplanetary_transfer_helper_functions_Q4 import *
 import matplotlib.pyplot as plt
+from multiprocessing import Pool
 
 # Load spice kernels.
 spice.load_standard_kernels()
 
 # Define directory where simulation output will be written
 output_directory = "./SimulationOutput/"
-Q4c = False
-Q4d = True
+
+def single_run_mc(args):
+    p1_mc, p_ref, initial_state, departure_epoch, t_mid, arrival_epoch, \
+        r_bar_target, tolerance_mc, max_iterations_mc = args
+
+    termination_settings_arc1 = propagation_setup.propagator.time_termination(t_mid)
+    termination_settings_arc2 = propagation_setup.propagator.time_termination(arrival_epoch)
+
+    bodies = create_simulation_bodies()
+    spice.load_standard_kernels()
+
+    p1_mc = np.array(p1_mc, dtype=np.float64).flatten()
+
+    propagator_settings_arc1_mc = get_perturbed_propagator_settings(bodies, initial_state, departure_epoch,
+                                                                    termination_settings_arc1,
+                                                                    empirical_acceleration=p1_mc)
+
+    simulate_arc1_mc = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings_arc1_mc)
+
+    state_history_arc1_mc = simulate_arc1_mc.state_history
+    t_mid_mc = list(state_history_arc1_mc.keys())[-1]
+    x_mid_mc = state_history_arc1_mc[t_mid_mc]
+
+    # .... ARC (P2) ....
+    p2_mc = np.zeros(3)
+
+    for iteration in range(max_iterations_mc):
+        print(f'iteration {iteration}')
+        propagator_settings_arc2_mc = get_perturbed_propagator_settings(bodies, x_mid_mc, t_mid_mc,
+                                                                        termination_settings_arc2,
+                                                                        empirical_acceleration=p2_mc)
+
+        sensitivity_parameters_arc2_mc = get_sensitivity_parameter_set(propagator_settings_arc2_mc, bodies)
+
+        variational_solver_arc2_mc = numerical_simulation.create_variational_equations_solver(bodies,
+                                                                                              propagator_settings_arc2_mc,
+                                                                                              sensitivity_parameters_arc2_mc)
+
+        state_history_arc2_mc = variational_solver_arc2_mc.state_history
+        final_epoch_arc2_mc = list(state_history_arc2_mc.keys())[-1]
+        x_arc2_final_mc = state_history_arc2_mc[final_epoch_arc2_mc]
+        r_arc2_final_mc = x_arc2_final_mc[0:3]
+        delta_r_arc2_mc = r_bar_target - r_arc2_final_mc
+
+        sensitivity_history_arc2_mc = variational_solver_arc2_mc.sensitivity_matrix_history
+        S_final_arc2_mc = sensitivity_history_arc2_mc[final_epoch_arc2_mc]
+        S_r_final_arc2_mc = S_final_arc2_mc[0:3, 0:3]
+
+        if np.linalg.norm(delta_r_arc2_mc) < tolerance_mc:
+            print('monte carlo converged :)')
+            break
+
+        p2_mc += np.linalg.pinv(S_r_final_arc2_mc) @ delta_r_arc2_mc
+        p2_mc = np.array(p2_mc, dtype=np.float64).flatten()
+
+    avg_thrust = (np.linalg.norm(p1_mc) + np.linalg.norm(p2_mc)) / 2.0
+    p1_deviation = np.linalg.norm(p1_mc - p_ref)
+
+    return avg_thrust, p1_deviation, p1_mc.to_list(), p2_mc.to_list()
+
 
 if __name__ == "__main__":
 
@@ -170,63 +229,19 @@ if __name__ == "__main__":
 
     #...................................................................................................................
     # 2. MONTE CARLO LOOP
-    for run in range(no_of_runs):
-        # if run % 10 == 0:
-        #
-        print(f'currently successfully ran {run}/no_of_runs')
+    args_list = [
+        (p1_random_values[i], p, initial_state, departure_epoch, t_mid, arrival_epoch,
+         r_bar_target, tolerance_mc, max_iterations_mc)
+        for i in range(no_of_runs)
+    ]
 
-        # .... ARC 1 (P1) ....
-        p1_mc = np.array(p1_random_values[run], dtype = np.float64).flatten()
+    with Pool(processes=7) as pool:
+        results = pool.map(single_run_mc, args_list)
 
-        propagator_settings_arc1_mc = get_perturbed_propagator_settings(bodies, initial_state, departure_epoch,
-                                                                        termination_settings_arc1,
-                                                                        empirical_acceleration = p1_mc)
-
-        simulate_arc1_mc = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings_arc1_mc)
-
-        state_history_arc1_mc = simulate_arc1_mc.state_history
-        t_mid_mc = list(state_history_arc1_mc.keys())[-1]
-        x_mid_mc = state_history_arc1_mc[t_mid_mc]
-
-        # .... ARC (P2) ....
-        p2_mc = np.zeros(3)
-
-        for iteration in range(max_iterations_mc):
-            print(f'iteration {iteration}')
-            propagator_settings_arc2_mc = get_perturbed_propagator_settings(bodies, x_mid, t_mid_mc,
-                                                                            termination_settings_arc2,
-                                                                            empirical_acceleration = p2_mc)
-
-            sensitivity_parameters_arc2_mc = get_sensitivity_parameter_set(propagator_settings_arc2_mc, bodies)
-
-            variational_solver_arc2_mc = numerical_simulation.create_variational_equations_solver(bodies,
-                                                                                                  propagator_settings_arc2_mc,
-                                                                                                  sensitivity_parameters_arc2_mc)
-
-            state_history_arc2_mc = variational_solver_arc2_mc.state_history
-            final_epoch_arc2_mc = list(state_history_arc2_mc.keys())[-1]
-            x_arc2_final_mc = state_history_arc2_mc[final_epoch_arc2_mc]
-            r_arc2_final_mc = x_arc2_final_mc[0:3]
-            delta_r_arc2_mc = r_bar_target - r_arc2_final_mc
-
-            sensitivity_history_arc2_mc = variational_solver_arc2_mc.sensitivity_matrix_history
-            S_final_arc2_mc = sensitivity_history_arc2_mc[final_epoch_arc2_mc]
-            S_r_final_arc2_mc = S_final_arc2_mc[0:3, 0:3]
-
-            if np.linalg.norm(delta_r_arc2_mc) < tolerance_mc:
-                print('monte carlo converged :)')
-                break
-
-            p2_mc += np.linalg.pinv(S_r_final_arc2_mc) @ delta_r_arc2_mc
-            p2_mc = np.array(p2_mc, dtype = np.float64).flatten()
-
-        avg_thrust_values.append((np.linalg.norm(p1_mc) + np.linalg.norm(p2_mc)) / 2.0)
-        p1_deviation_values.append(np.linalg.norm(p1_mc - p))
-        p1_values.append(p1_mc)
-        p2_values.append(p2_mc)
-
-    avg_thrust_values = np.array(avg_thrust_values)
-    p1_deviation_values = np.array(p1_deviation_values)
+    avg_thrust_values = np.array([r[0] for r in results])
+    p1_deviation_values = np.array([r[1] for r in results])
+    p1_values = [np.array(r[2]) for r in results]
+    p2_values = [np.array(r[3]) for r in results]
 
     # ...................................................................................................................
     # 2. OPTIMAL RUN IDENTIFICATION
@@ -244,7 +259,7 @@ if __name__ == "__main__":
     # ...................................................................................................................
     # 3. PLOT 1 - SCATTER PLOT
 
-    avg_thrust_mc = np.linalg.norm(p) + np.linalg.norm(p2)  # check
+    avg_thrust_mc = (np.linalg.norm(p) + 0.0)/2.0  # check
     fig, ax = plt.subplots(figsize = (15,10))
     ax.scatter(p1_deviation_values, avg_thrust_values, s = 6, alpha = 0.5, color = 'blue', label = 'Monte Carlo Runs')
     ax.scatter(0, avg_thrust_mc)
@@ -266,7 +281,7 @@ if __name__ == "__main__":
                                                                termination_settings_tt, empirical_acceleration = p)
 
     simulate_tt = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings_tt)
-    times_tt = np.array(list(simulate_tt.state_hiistory.keys()))
+    times_tt = np.array(list(simulate_tt.state_history.keys()))
     p_R = np.full(len(times_tt), p[0])
     p_S = np.full(len(times_tt), p[1])
     p_W = np.full(len(times_tt), p[2])
@@ -298,7 +313,7 @@ if __name__ == "__main__":
                               np.full(len(times_tt_opt_arc2), p2_optimal_mc[2])])
 
 
-    fig, ax = plt.subplots(3, 1, figsize = (15,10))
+    fig, axes = plt.subplots(3, 1, figsize = (15,10))
 
     components = ['R (Radial)', 'S (Along Track)', 'W (Cross-Track)']
     thrust_tt_vals = [p_R, p_S, p_W]
@@ -306,7 +321,7 @@ if __name__ == "__main__":
     days_tt = (times_tt - departure_epoch) / 86400.0
     days_opt = (times_tt_opt - departure_epoch) / 86400.0
 
-    for i ,ax in enumerate(ax):
+    for i ,ax in enumerate(axes):
         ax.plot(days_tt, thrust_tt_vals[i], label = '1 Arc Case Thrust', linewidth = 1.5, color = 'red')
         ax.plot(days_opt, thrust_tt_opt_vals[i], label = 'Optimal Case Thrust', linewidth = 1.5, color = 'blue')
         ax.axvline((t_mid - departure_epoch) / 86400.0, color = 'green', linestyle = '--', linewidth = 1.0, label = 'Arc Split')
@@ -325,9 +340,64 @@ if __name__ == "__main__":
 
 
 
+# old monte carlo
+    # for run in range(no_of_runs):
+    #     # if run % 10 == 0:
+    #     #
+    #     print(f'currently successfully ran {run}/no_of_runs')
+    #
+    #     # .... ARC 1 (P1) ....
+    #     p1_mc = np.array(p1_random_values[run], dtype = np.float64).flatten()
+    #
+    #     propagator_settings_arc1_mc = get_perturbed_propagator_settings(bodies, initial_state, departure_epoch,
+    #                                                                     termination_settings_arc1,
+    #                                                                     empirical_acceleration = p1_mc)
+    #
+    #     simulate_arc1_mc = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings_arc1_mc)
+    #
+    #     state_history_arc1_mc = simulate_arc1_mc.state_history
+    #     t_mid_mc = list(state_history_arc1_mc.keys())[-1]
+    #     x_mid_mc = state_history_arc1_mc[t_mid_mc]
+    #
+    #     # .... ARC (P2) ....
+    #     p2_mc = np.zeros(3)
+    #
+    #     for iteration in range(max_iterations_mc):
+    #         print(f'iteration {iteration}')
+    #         propagator_settings_arc2_mc = get_perturbed_propagator_settings(bodies, x_mid, t_mid_mc,
+    #                                                                         termination_settings_arc2,
+    #                                                                         empirical_acceleration = p2_mc)
+    #
+    #         sensitivity_parameters_arc2_mc = get_sensitivity_parameter_set(propagator_settings_arc2_mc, bodies)
+    #
+    #         variational_solver_arc2_mc = numerical_simulation.create_variational_equations_solver(bodies,
+    #                                                                                               propagator_settings_arc2_mc,
+    #                                                                                               sensitivity_parameters_arc2_mc)
+    #
+    #         state_history_arc2_mc = variational_solver_arc2_mc.state_history
+    #         final_epoch_arc2_mc = list(state_history_arc2_mc.keys())[-1]
+    #         x_arc2_final_mc = state_history_arc2_mc[final_epoch_arc2_mc]
+    #         r_arc2_final_mc = x_arc2_final_mc[0:3]
+    #         delta_r_arc2_mc = r_bar_target - r_arc2_final_mc
+    #
+    #         sensitivity_history_arc2_mc = variational_solver_arc2_mc.sensitivity_matrix_history
+    #         S_final_arc2_mc = sensitivity_history_arc2_mc[final_epoch_arc2_mc]
+    #         S_r_final_arc2_mc = S_final_arc2_mc[0:3, 0:3]
+    #
+    #         if np.linalg.norm(delta_r_arc2_mc) < tolerance_mc:
+    #             print('monte carlo converged :)')
+    #             break
+    #
+    #         p2_mc += np.linalg.pinv(S_r_final_arc2_mc) @ delta_r_arc2_mc
+    #         p2_mc = np.array(p2_mc, dtype = np.float64).flatten()
+    #
+    #     avg_thrust_values.append((np.linalg.norm(p1_mc) + np.linalg.norm(p2_mc)) / 2.0)
+    #     p1_deviation_values.append(np.linalg.norm(p1_mc - p))
+    #     p1_values.append(p1_mc)
+    #     p2_values.append(p2_mc)
 
-
-
+    # avg_thrust_values = np.array(avg_thrust_values)
+    # p1_deviation_values = np.array(p1_deviation_values)
 
 
 

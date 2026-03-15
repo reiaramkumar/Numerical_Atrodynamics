@@ -28,7 +28,7 @@ departure_epoch = 2132.212895 * constants.JULIAN_DAY
 time_of_flight = 157.9635921 * constants.JULIAN_DAY
 arrival_epoch = departure_epoch + time_of_flight
 target_body = 'Venus'
-global_frame_orientation = "J2000"
+global_frame_orientation = "ECLIPJ2000"
 fixed_step_size = 3600.0
 
 ################ HELPER FUNCTIONS: DO NOT MODIFY ########################################
@@ -464,7 +464,6 @@ def get_unperturbed_propagator_settings(
     return propagator_settings
 
 
-# STUDENT CODE TASK - full function (except signature and return)
 def get_perturbed_propagator_settings(
     bodies: environment.SystemOfBodies,
     initial_state: np.ndarray,
@@ -578,10 +577,12 @@ def get_perturbed_propagator_settings(
         propagation_setup.dependent_variable.single_acceleration(
             propagation_setup.acceleration.cannonball_radiation_pressure_type, "Spacecraft", "Sun"),
 
+        propagation_setup.dependent_variable.total_acceleration('Spacecraft')
+
     ]
 
     # Create numerical integrator settings.
-    fixed_step_size = 10.0
+    # fixed_step_size = 10.0
     integrator_settings = propagation_setup.integrator.runge_kutta_fixed_step(
         fixed_step_size, coefficient_set=propagation_setup.integrator.CoefficientSets.rk_4
     )
@@ -629,7 +630,7 @@ def create_simulation_bodies() -> environment.SystemOfBodies:
     bodies_to_create = ['Sun', 'Moon', 'Earth', 'Mars', 'Venus', 'Jupiter', 'Saturn']
 
     global_frame_origin = 'Sun'
-    global_frame_orientation = 'J2000'     # ECLIPJ2000 or J2000?
+    global_frame_orientation = 'ECLIPJ2000'
     body_settings = environment_setup.get_default_body_settings(
         bodies_to_create,
         global_frame_origin,

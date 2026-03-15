@@ -448,7 +448,7 @@ def get_unperturbed_propagator_settings(
         central_bodies
     )
 
-    fixed_step_size = 3600.0
+    fixed_time_step = 10.0
     integrator_settings = propagation_setup.integrator.runge_kutta_fixed_step(
         fixed_step_size, coefficient_set = propagation_setup.integrator.CoefficientSets.rk_4)
 
@@ -475,7 +475,7 @@ def get_unperturbed_propagator_settings(
         initial_time,
         integrator_settings,
         termination_condition,
-        output_variables = dependent_variables_to_save,
+        output_variables = dependent_variables_to_save
     )
 
 

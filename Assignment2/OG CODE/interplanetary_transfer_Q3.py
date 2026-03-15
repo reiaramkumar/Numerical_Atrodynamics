@@ -23,10 +23,10 @@ output_directory = "./SimulationOutput/"
 
 if __name__ == "__main__":
 
-    Q3a = False
-    Q3c = False
+    Q3a = True
+    Q3c = True
     Q3d = True
-    Q3e = False
+    Q3e = True
 
 
     # Create body objects
@@ -39,9 +39,8 @@ if __name__ == "__main__":
 
     ##############################################################
     # Compute number of arcs and arc length
-    q3_start_time = 184557994.12800002
-
-    q3_end_time = 197737594.12800002
+    q3_start_time = 184557994.12800002  # depature_epoch_ciii
+    q3_end_time = 197737594.12800002    # arrival_epoch_ciii
     number_of_arcs = 10
     arc_length = (q3_end_time - q3_start_time) / number_of_arcs # by length they mean the delta t for each arc
 
@@ -51,9 +50,12 @@ if __name__ == "__main__":
     iterations_per_arc_3d = {}
     dv_total_per_arc_3d = {}
     # arc_state_histories_3d = {}
-    fig,ax = plt.subplots(figsize=(15,10))
-    fig3c, ax3c = plt.subplots(figsize=(15,10))
-    fig3d, ax3d = plt.subplots(figsize=(15,10))
+
+
+    Q3a_data = {}
+    Q3c_data = {}
+    Q3d_data = {}
+
 
     # Compute relevant parameters (dynamics, state transition matrix, Delta V) for each arc
     for arc_index in range(number_of_arcs):
@@ -89,13 +91,18 @@ if __name__ == "__main__":
 
 
             time_days_3a = (times_3a - q3_start_time) / constants.JULIAN_DAY
-            ax.plot(time_days_3a, delta_r_3a, label = f'Arc {arc_index}')
+            Q3a_data[arc_index] = (time_days_3a, delta_r_3a)
 
-            # Saving :)
-            ROW_9 = state_history_3a[0][0,:6]
-            ROW_10 = state_history_3a[0][-1,:6]
-            ROW_11 = state_history_3a[4][0,:6]
-            ROW_12 = state_history_3a[4][0,:6]
+
+            arc_idx = sorted(iterations_per_arc_3d.keys())
+            times_3a_list = sorted(state_history_3a.keys())
+            if arc_index == 0:
+                ROW_9 = np.hstack([[times_3a_list[0]], state_history_3a[times_3a_list[0]]])
+                ROW_10 = np.hstack([[times_3a_list[-1]], state_history_3a[times_3a_list[-1]]])
+            if arc_index == 4:
+                ROW_11 = np.hstack([[times_3a_list[0]], state_history_3a[times_3a_list[0]]])
+                ROW_12 = np.hstack([[times_3a_list[-1]], state_history_3a[times_3a_list[-1]]])
+
             print('3a done')
         # ...................................................................................................................
         # 3C SINGLE PASS CORRECTION
@@ -159,7 +166,7 @@ if __name__ == "__main__":
             delta_r_3c = np.array(delta_r_3c)
             times_3c = np.array(times_3c)
             time_days_3c = (times_3c - current_arc_initial_time)/ constants.JULIAN_DAY
-            ax3c.plot(time_days_3c, delta_r_3c, label = f'Arc {arc_index}')
+            Q3c_data[arc_index] = (time_days_3c, delta_r_3c)
 
             print('3c done')
 
@@ -169,7 +176,7 @@ if __name__ == "__main__":
 
         #### 3d ###
         if Q3d == True:
-            print('step 1 done')
+
             tolerance = 1.0
             max_iterations = 5
             iteration_no = 0
@@ -179,7 +186,6 @@ if __name__ == "__main__":
             termination_settings_3d = propagation_setup.propagator.time_termination(
                 current_arc_final_time)
             while True:
-                print('step 2 done')
                 # Solve for state transition matrix on current arc
                 initial_state_correction_3d = np.hstack((np.zeros(3), dv_total_3d))
 
@@ -204,10 +210,10 @@ if __name__ == "__main__":
                 # Retrieve final state deviation
                 r_3d = state_history_3d[final_epoch_3d][:3]
                 r_bar_3d = lambert_history_3d[final_epoch_3d][:3]
-                final_state_deviation_3d = r_3d - r_bar_3d
+                final_state_deviation_3d =  r_bar_3d - r_3d
 
                 if np.linalg.norm(final_state_deviation_3d) < tolerance:
-                    print('arc done')
+                    print(f'arc {arc_index} done')
                     break
 
 
@@ -223,59 +229,111 @@ if __name__ == "__main__":
 
             iterations_per_arc_3d[arc_index] = iteration_no
             dv_total_per_arc_3d[arc_index] = dv_total_3d
+            final_correction_3d = np.hstack((np.zeros(3), dv_total_3d))
+            dynamics_simulator_3d_re = propagate_trajectory(current_arc_initial_time, termination_settings_3d,
+                                                           bodies, lambert_arc_ephemeris, use_perturbations=True,
+                                                           initial_state_correction=final_correction_3d)
+            state_history_3d_re = dynamics_simulator_3d_re.propagation_results.state_history
+            lambert_history_3d_re = get_lambert_arc_history(lambert_arc_ephemeris,state_history_3d_re)
+
+            delta_r_3d_re = []
+            times_3d_re = []
+
+            for t in sorted(state_history_3d_re):
+                r = state_history_3d_re[t][:3]
+                r_bar = lambert_history_3d_re[t][:3]
+                dr = np.linalg.norm(r - r_bar)
+                delta_r_3d_re.append(dr)
+                times_3d_re.append(t)
+
+            delta_r_3d_re = np.array(delta_r_3d_re)
+            times_3d_re = np.array(times_3d_re)
+            times_3d_re_days = (times_3d_re - current_arc_initial_time)/ constants.JULIAN_DAY
+            Q3d_data[arc_index] = (times_3d_re_days, delta_r_3d_re)
+
             # arc_state_histories_3d[arc_index] = state_history_3d
 
-
-        print("Arc   Iterations")
-        for arc in sorted(iterations_per_arc_3d.keys()):
-            print(f"{arc:2d}    {iterations_per_arc_3d[arc]}")
-
-        print('3d done')
+            print('3d done')
 
     #... 3E ...
-    if Q3 == True:
-        print(f'total delta_v {dv_total_per_arc_3d}')
+    if Q3e == True:
+        total_delta_v = sum(np.linalg.norm(dv) for dv in dv_total_per_arc_3d.values())
+        print(f'Total Delta V: {total_delta_v:.4f} m/s')
         print('3e done')
 
+    print("Arc   Iterations")
+    for arc in sorted(iterations_per_arc_3d.keys()):
+        print(f"{arc:2d}    {iterations_per_arc_3d[arc]}")
 
-
-
-
-
+    colors = {0: '#FF0000', 1: '#FF7F00', 2: '#FFD700', 3: '#00CC00', 4: '#00BFFF', 5: '#0000FF', 6: '#8B00FF',
+              7: '#FF1493', 8: '#8B4513', 9: '#20B2AA'}
     # 3a plot
     if Q3a == True:
+        fig, ax = plt.subplots(figsize=(12, 7))
+        for arc_index, (t, dr) in Q3a_data.items():
+            ax.plot(t, dr, label=f'Arc {arc_index}', color = colors[arc_index])
+
         ax.set_xlabel('Time since departure(days)')
         ax.set_ylabel(r'$\Delta r(t)=||r(t)-\bar{r}(t)||$ [m]')
         ax.set_title('Arcwise propagation deviation from Lambert arc')
         ax.set_yscale('log')
         ax.legend(ncol=2, fontsize=9)
         fig.tight_layout()
+        fig.savefig('Q3P1.png', dpi = 300)
         plt.show()
 
 
 
     # 3c plot
     if Q3c == True:
+        fig3c, ax3c = plt.subplots(figsize=(12, 7))
+        for arc_index, (t, dr) in Q3c_data.items():
+            ax3c.plot(t, dr, label=f'Arc {arc_index}', color = colors[arc_index])
+
         ax3c.set_xlabel('Time since arc start (days)')
         ax3c.set_ylabel(r'$\Delta r_{corrected}(t)=||r_{corrected}(t)-\bar{r}(t)||$ [m]')
         ax3c.set_title('Deviation from Lambert arc after correction')
         ax3c.set_yscale('log')
         ax3c.legend(ncol=2, fontsize=9)
         fig3c.tight_layout()
+        fig3c.savefig('Q3P2.png', dpi = 300)
         plt.show()
 
     # 3d plot
     if Q3d == True:
-        arc_idx = sorted(iterations_per_arc_3d.keys())
-        iterations = [iterations_per_arc_3d[arc] for arc in arc_idx]
-        ax3d.bar(arc_idx, iterations)
-        ax3d.set_xlabel('Arc Index')
-        ax3d.set_ylabel('Iterations to convergence')
-        ax3d.set_title('Iterations to convergence per arc')
-        ax3d.set_xticks(arc_idx)
+        fig3d, ax3d = plt.subplots(figsize=(12, 7))
+        for arc_index, (t, dr) in Q3d_data.items():
+            ax3d.plot(t, dr, label=f'Arc {arc_index}',color = colors[arc_index])
+
+        ax3d.set_xlabel('Time since arc start (days)')
+        ax3d.set_ylabel(r'$\Delta r$ (m)')
+        ax3d.set_title('Deviation from Lambert arc after iterative correction')
+        ax3d.set_yscale('log')
+        ax3d.legend(ncol=2, fontsize=9)
         fig3d.tight_layout()
+        fig3d.savefig('Q3P3.png', dpi = 300)
         plt.show()
 
+        arc_idx = sorted(iterations_per_arc_3d.keys())
+        iterations = [iterations_per_arc_3d[arc] for arc in arc_idx]
+        fig_iter, ax_iter = plt.subplots(figsize=(12, 7))
+        for idx, arc_i in zip(arc_idx, iterations):
+            ax_iter.bar(idx, arc_i, color = colors[idx])
+
+        ax_iter.set_xlabel('Arc index')
+        ax_iter.set_ylabel('Number of iterations')
+        ax_iter.set_title('Iterations to convergence per arc')
+        ax_iter.set_xticks(range(10))
+        ax_iter.set_xticklabels([f'Arc {i}' for i in range(10)])
+        fig_iter.tight_layout()
+        fig_iter.savefig('Q3P4.png', dpi = 300)
+        plt.show()
+
+        # Saving :)
+        if Q3a == True:
+            save_data = np.vstack([ROW_9, ROW_10, ROW_11, ROW_12])
+            with open('CartesianResults_AE4868_2025_2_6446426.dat', 'ab') as f:
+                np.savetxt(f, save_data)
 
             #%%
         #

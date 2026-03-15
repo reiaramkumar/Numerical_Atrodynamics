@@ -8,6 +8,7 @@ under the terms of the Modified BSD license. You should have received
 a copy of the license with this file. If not, please or visit:
 http://tudat.tudelft.nl/LICENSE.
 """
+from matplotlib.pyplot import yscale
 
 from interplanetary_transfer_helper_functions_Q2 import *
 import matplotlib.pyplot as plt
@@ -37,7 +38,8 @@ if __name__ == "__main__":
     case_iv: The initial and final propagation time shifted forward and backward in time, respectively, by ∆t=1 hour. The propagation is started from the middle point in time of the Lambert arc and propagated forward and backward in time.
 
     """
-
+    departure_epoch = 2132.212895 * constants.JULIAN_DAY
+    arrival_epoch = departure_epoch + 157.9635921 * constants.JULIAN_DAY
     # case 1
     departure_epoch_ci = departure_epoch
     arrival_epoch_ci = arrival_epoch
@@ -56,10 +58,10 @@ if __name__ == "__main__":
 
     departure_epoch_ciii = None
     arrival_epoch_ciii = None
-    t = departure_epoch
 
-    earth_state_vec = spice.get_body_cartesian_state_at_epoch('Earth', 'Sun', 'J2000', 'NONE', t)
-    venus_state_vec = spice.get_body_cartesian_state_at_epoch('Venus', 'Sun', 'J2000', 'NONE', t)
+
+    earth_state_vec = spice.get_body_cartesian_state_at_epoch('Earth', 'Sun', 'ECLIPJ2000', 'NONE', departure_epoch)
+    venus_state_vec = spice.get_body_cartesian_state_at_epoch('Venus', 'Sun', 'ECLIPJ2000', 'NONE', arrival_epoch)
 
     a_earth = element_conversion.cartesian_to_keplerian(earth_state_vec, mu_sun)
     a_earth = a_earth[0]
@@ -67,24 +69,26 @@ if __name__ == "__main__":
     a_venus = a_venus[0]
     r_soi_earth = a_earth * (mass_earth / mass_sun) ** (2 / 5)
     r_soi_venus = a_venus * (mass_venus / mass_sun) ** (2 / 5)
+    t_soi = departure_epoch
+
+    while t_soi <= arrival_epoch:
+        r_cart_sc = lambert_arc_ephemeris.cartesian_state(t_soi)[:3]
 
 
-    while t <= arrival_epoch:
-        r_cart_state_sc = lambert_arc_ephemeris.cartesian_state(t)
-        r_cart_sc = r_cart_state_sc[:3]
-
-        r_earth = spice.get_body_cartesian_state_at_epoch('Earth', 'Sun', 'J2000', 'NONE', t)[:3]
-        r_venus = spice.get_body_cartesian_state_at_epoch('Venus', 'Sun', 'J2000', 'NONE', t)[:3]
+        r_earth = spice.get_body_cartesian_state_at_epoch('Earth', 'Sun', 'ECLIPJ2000', 'NONE', t_soi)[:3]
+        r_venus = spice.get_body_cartesian_state_at_epoch('Venus', 'Sun', 'ECLIPJ2000', 'NONE', t_soi)[:3]
 
         if np.linalg.norm(r_cart_sc - r_earth) >= r_soi_earth and departure_epoch_ciii is None:
-            departure_epoch_ciii = t
+            departure_epoch_ciii = t_soi
             print(departure_epoch_ciii)
 
         if np.linalg.norm(r_cart_sc - r_venus) <= r_soi_venus and departure_epoch_ciii is not None:
-            arrival_epoch_ciii = t
+            arrival_epoch_ciii = t_soi
             print(arrival_epoch_ciii)
             break
-        t+=fixed_step_size
+        t_soi+=fixed_step_size
+        if arrival_epoch_ciii is None:
+            arrival_epoch_ciii = arrival_epoch
 
 
     # case 4
@@ -104,6 +108,8 @@ if __name__ == "__main__":
     }
     state_histories = {}
     lambert_histories = {}
+    dep_var_histories = {}
+
 
     for case_name, (departure_epoch_with_buffer, arrival_epoch_with_buffer) in cases.items():
 
@@ -115,6 +121,7 @@ if __name__ == "__main__":
             soi_termination = propagation_setup.propagator.dependent_variable_termination(dependent_variable_settings =
                                 propagation_setup.dependent_variable.relative_distance("Spacecraft", "Venus"),
                                 limit_value = r_soi_venus, use_as_lower_limit = True)
+            # false --> as terminates when the r_sc drops below the r_soi_venus values
 
             termination_settings = propagation_setup.propagator.hybrid_termination([soi_termination, time_termination],
                                                                                    fulfill_single_condition = True)
@@ -128,6 +135,8 @@ if __name__ == "__main__":
             use_perturbations=True,
         )
 
+        dep_var_histories[case_name] = dynamics_simulator.propagation_results.dependent_variable_history
+
 
 
         write_propagation_results_to_file(
@@ -136,6 +145,7 @@ if __name__ == "__main__":
             "Q2_" + case_name,
             output_directory,
         )
+
 
 
         state_histories[case_name] = dynamics_simulator.propagation_results.state_history
@@ -164,6 +174,8 @@ if __name__ == "__main__":
     )
     state_histories['case_iv'] = dynamics_simulator_iv.propagation_results.state_history
     lambert_histories['case_iv'] = get_lambert_arc_history(lambert_arc_ephemeris, state_histories['case_iv'])
+    dep_var_histories['case_iv'] = dynamics_simulator_iv.propagation_results.dependent_variable_history
+    print('case iv done')
 
     times_dict = {}
     delta_r_dict = {}
@@ -178,6 +190,8 @@ if __name__ == "__main__":
         delta_r = []
         delta_v = []
         delta_a = []
+        dep_var_history = dep_var_histories[case_name]
+
 
         for t in sorted(state_history.keys()):
             x_t = state_history[t]
@@ -191,8 +205,7 @@ if __name__ == "__main__":
 
             delta_r.append(np.linalg.norm(r - r_bar))
             delta_v.append(np.linalg.norm(v - v_bar))
-
-            a = - mu_sun * r / np.linalg.norm(r)**3
+            a = dep_var_history[t][30:33]
             a_bar = - mu_sun * r_bar / np.linalg.norm(r_bar)**3
 
             delta_a.append(np.linalg.norm(a - a_bar))
@@ -204,37 +217,118 @@ if __name__ == "__main__":
         delta_a_dict[case_name] = np.array(delta_a)
         times_dict[case_name] = np.array(times)
 
-    # %%
+#.......................................................................................................................
+    # SAVING :)
+    sh_ci = state_histories['case_i']
+    times_ci = np.array(list(sh_ci.keys()))
+    states_ci = np.array(list(sh_ci.values()))
+    sh_cii = state_histories['case_ii']
+    times_cii = np.array(list(sh_cii.keys()))
+    states_cii = np.array(list(sh_cii.values()))
+    sh_ciii = state_histories['case_iii']
+    times_ciii = np.array(list(sh_ciii.keys()))
+    states_ciii = np.array(list(sh_ciii.values()))
+
+    ROW_3 = np.hstack([[times_ci[0]], states_ci[0]])
+    ROW_5= np.hstack([[times_cii[0]], states_cii[0]])
+    ROW_7 = np.hstack([[times_ciii[0]], states_ciii[0]])
+
+    ROW_4 = np.hstack([[times_ci[-1]], states_ci[-1]])
+    ROW_6 = np.hstack([[times_cii[-1]], states_cii[-1]])
+    ROW_8 = np.hstack([[times_ciii[-1]], states_ciii[-1]])
+    save_data = np.vstack([ROW_3, ROW_4, ROW_5, ROW_6, ROW_7, ROW_8])
+    with open('CartesianResults_AE4868_2025_2_6446426.dat', 'ab') as f:
+        np.savetxt(f, save_data)
+
 
     fig,ax = plt.subplots(3,4, figsize = (15,10))
-
+    colors = {'case_i': '#FF1493', 'case_ii': '#9B59B6', 'case_iii': '#00BFFF', 'case_iv': '#FFA500'}
     for i, case_name in enumerate(times_dict):
         time_days = (times_dict[case_name] - departure_epoch)/ 86400.0
 
-        ax[0,i].plot(time_days, delta_r_dict[case_name])
+        ax[0,i].plot(time_days, delta_r_dict[case_name], color = colors[case_name])
         ax[0,i].set_xlabel('Time (days)')
         ax[0,i].set_ylabel(r'$\Delta r$ (m)')
-        ax[1,i].plot(time_days, delta_v_dict[case_name])
+        ax[0,i].set_yscale('log')
+        ax[1,i].plot(time_days, delta_v_dict[case_name], color = colors[case_name])
         ax[1,i].set_xlabel('Time (days)')
         ax[1,i].set_ylabel(r'$\Delta v$ (m/s)')
-        ax[2,i].plot(time_days, delta_a_dict[case_name])
+        ax[1, i].set_yscale('log')
+        ax[2,i].plot(time_days, delta_a_dict[case_name], color = colors[case_name])
         ax[2,i].set_xlabel('Time (days)')
         ax[2,i].set_ylabel(r'$\Delta a$ (m/s$^2$)')
-        # if i == 3:
-        #     ax[0,i].set_xlim(arrival_epoch_civ_bwd, arrival_epoch_civ_fwd)
-        #     ax[0,2].set_xlim(arrival_epoch_civ_bwd, arrival_epoch_civ_fwd)
-        #
+        ax[2, i].set_yscale('log')
+
     ax[0, 0].set_ylabel(r'$\Delta r$ (m)')
     ax[1, 0].set_ylabel(r'$\Delta v$ (m/s)')
     ax[2, 0].set_ylabel(r'$\Delta a$ (m/s$^2$)')
-    ax[0, 0].set_title('Case 1')
-    ax[0, 1].set_title('Case 2')
-    ax[0, 2].set_title('Case 3')
-    ax[0, 3].set_title('Case 4')
-    fig.suptitle('Deviation from Lambert Trajectory', fontsize=14)
+    ax[0, 0].set_title('Case I')
+    ax[0, 1].set_title('Case II')
+    ax[0, 2].set_title('Case III')
+    ax[0, 3].set_title('Case IV')
+    fig.suptitle('Deviation from Lambert arc for all propagation cases', fontsize=14)
+    fig.savefig('Q2P1.png', dpi=300, bbox_inches='tight')
+
     plt.tight_layout()
     plt.show()
-#%%
+    fig, ax = plt.subplots(3, 1, figsize=(12, 10))
+
+    labels = {'case_i': 'Case I', 'case_ii': 'Case II', 'case_iii': 'Case III', 'case_iv': 'Case IV'}
+    for case_name in times_dict:
+        time_days = (times_dict[case_name] - departure_epoch)/ 86400.0
+        ax[0].plot(time_days, delta_r_dict[case_name], color = colors[case_name], label = labels[case_name])
+        ax[1].plot(time_days, delta_v_dict[case_name], color = colors[case_name], label = labels[case_name])
+        ax[2].plot(time_days, delta_a_dict[case_name], color = colors[case_name], label = labels[case_name])
+
+    ax[0].set_ylabel(r'$\Delta r$ (m)')
+    ax[1].set_ylabel(r'$\Delta v$ (m/s)')
+    ax[2].set_ylabel(r'$\Delta a$ (m/s)')
+    for a in ax:
+        a.set_xlabel('Time (days)')
+        a.set_yscale('log')
+        a.legend(loc = 'center right')
+    fig.suptitle('Deviation from Lambert arc for all propagation cases', fontsize=14)
+    plt.tight_layout(pad=2.0)
+    plt.subplots_adjust(top=0.93)
+    fig.savefig('Q2P2.png', dpi=300, bbox_inches='tight')
+    plt.show()
 
 
+    delta_r_mass = {}
 
+    for mass in [1000, 500, 250]:
+        bodies.get_body('Spacecraft').mass = mass
+        dynamics_simulator_mass = propagate_trajectory(departure_epoch_civ_fwd, termination_settings_iv, bodies,
+                                                       lambert_arc_ephemeris, use_perturbations= True)
+
+        state_history_mass = dynamics_simulator_mass.propagation_results.state_history
+        lambert_history_mass = get_lambert_arc_history(lambert_arc_ephemeris, state_history_mass)
+        delta_r_arr = np.array([np.linalg.norm(state_history_mass[t][:3] - lambert_history_mass[t][:3]) for t in sorted(state_history_mass.keys())])
+        times_mass = np.array(sorted(state_history_mass.keys()))
+        delta_r_mass[mass] = (times_mass, delta_r_arr)
+
+    colors_M = {'500': '#FF1493', '250': '#9B59B6'}
+    fig,ax = plt.subplots(figsize = (10,8))
+    time_1000, dr_1000 = delta_r_mass[1000]
+    for mass in [500, 250]:
+        t_m, dr_m = delta_r_mass[mass]
+        dr_interp = np.interp(t_m, time_1000, dr_1000)
+        time_days_mass = (t_m - departure_epoch)/86400.0
+        ax.plot(time_days_mass, np.abs(dr_interp - dr_m), label = f'{mass:.2f} kg', color = colors_M[f'{mass}'])
+
+    ax.set_xlabel('Time (days)')
+    ax.set_ylabel(r'$||\Delta r_{mass} - \Delta r_{1000}||$ (m)')
+    ax.set_yscale('log')
+    ax.legend()
+    ax.set_title('Position difference w.r.t. case IV reference (1000 kg) for varying spacecraft mass')
+    plt.tight_layout()
+    fig.savefig('Q2P3.png', dpi=300, bbox_inches='tight')
+    plt.show()
+
+    # figure of merit
+    max_dr_1000 = np.max(delta_r_mass[1000][1])
+    max_dr_500 = np.max(delta_r_mass[500][1])
+    max_dr_250 = np.max(delta_r_mass[250][1])
+
+    L = np.abs((max_dr_1000 - max_dr_500) / (max_dr_500 - max_dr_1000))
+    print(f'fig og merit L: {L:.4f}')
