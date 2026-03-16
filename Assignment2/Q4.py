@@ -116,11 +116,6 @@ if __name__ == "__main__":
     # thrust
     p = np.linalg.pinv(S_r) @ delta_r_nom
     p = np.array(p, dtype = np.float64).flatten()
-    print(f"S_r shape: {S_r.shape}")
-    print(f"S_r values:\n{S_r}")
-    print(f"delta_r_nom: {delta_r_nom}")
-    print(f"p values: {p}")
-    print(f"||p||: {np.linalg.norm(p):.4e}")
 
     corrected_propagator_settings = get_perturbed_propagator_settings(bodies, initial_state, initial_time, termination_settings,
                                                              empirical_acceleration =  p)
@@ -312,9 +307,6 @@ if __name__ == "__main__":
     plt.savefig('Q4P3.png', dpi=300)
     plt.show()
 
-    print(f"||p||: {np.linalg.norm(p):.4e}")
-    print(f"||p1_optimal||: {np.linalg.norm(p1_optimal_mc):.4e}")
-    print(f"ratio p_optimal/p: {np.linalg.norm(p1_optimal_mc) / np.linalg.norm(p):.2f}x")
 
     # ...................................................................................................................
     # 2. OPTIMAL RUN IDENTIFICATION
