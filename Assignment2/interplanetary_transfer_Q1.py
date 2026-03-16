@@ -11,13 +11,14 @@ http://tudat.tudelft.nl/LICENSE.
 
 from interplanetary_transfer_helper_functions_Q1 import *
 import matplotlib.pyplot as plt
+import os
 
 # Load spice kernels.
 spice.load_standard_kernels()
 
 # Define directory where simulation output will be written
 output_directory = "./SimulationOutput/"
-
+os.makedirs(output_directory, exist_ok=True)
 
 if __name__ == "__main__":
 

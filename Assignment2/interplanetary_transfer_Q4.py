@@ -73,7 +73,7 @@ if __name__ == "__main__":
 
     sensitivity_histories_1arc = variational_equations_1arc.sensitivity_matrix_history
     S_final_1arc = sensitivity_histories_1arc[final_epoch_1arc]
-    S_r_1arc = S_final_1arc[0:3, 0:3]
+    S_r_1arc = S_final_1arc[0:3, 6:9]
 
     # final target position from lambert
     r_bar_target_1arc = lambert_arc_ephemeris_1arc.cartesian_state(arrival_epoch)[0:3]
@@ -106,7 +106,7 @@ if __name__ == "__main__":
 
 
 
-    state_history_corrected_1arc = dynamics_simulator_1arc.state_history
+    state_history_corrected_1arc = dynamics_simulator_1arc.propagation_results.state_history
 
     final_epoch_corrected_1arc = list(state_history_corrected_1arc.keys())[-1]
     x_cor_final_1arc = state_history_corrected_1arc[final_epoch_corrected_1arc]
@@ -115,6 +115,8 @@ if __name__ == "__main__":
     residual_corrected_1arc = r_bar_target_1arc - r_cor_final_1arc
 
     row_13 = np.hstack([[final_epoch_corrected_1arc], x_cor_final_1arc])
+    with open('CartesianResults_AE4868_2025_2_6446426.dat', 'ab') as f:
+        np.savetxt(f, row_13.reshape(1, -1))
 
 
 
