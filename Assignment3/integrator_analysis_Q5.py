@@ -11,7 +11,7 @@ http://tudat.tudelft.nl/LICENSE.
 
 import os
 
-from integrator_analysis_helper_functions import *
+from integrator_analysis_helper_functions_Q1 import *
 
 current_directory = os.getcwd()
 

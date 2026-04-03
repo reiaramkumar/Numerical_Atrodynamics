@@ -1,13 +1,12 @@
-"""
-Copyright (c) 2010-2020, Delft University of Technology
-All rigths reserved
-
-This file is part of the Tudat. Redistribution and use in source and
-binary forms, with or without modification, are permitted exclusively
-under the terms of the Modified BSD license. You should have received
-a copy of the license with this file. If not, please or visit:
-http://tudat.tudelft.nl/LICENSE.
-"""
+# ======================================= DIFFERENCE FUNCTIONS SUMMARY =======================================
+# | Function                          | Purpose                                          | Return value                                 |
+# |-----------------------------------|--------------------------------------------------|----------------------------------------------|
+# | get_difference_wrt_kepler_orbit   | Computes difference between numerical trajectory | dict[epoch] = Keplerian Cartesian state      |
+# |                                   | and analytically propagated Kepler orbit         |               - numerical Cartesian state    |
+# |                                   |                                                  |                                              |
+# | get_difference_wrt_benchmarks     | Computes difference between numerical trajectory | dict[epoch] = numerical Cartesian state      |
+# |                                   | and benchmark trajectory from interpolator       |               - benchmark Cartesian state    |
+# ================================================================================================
 
 import numpy as np
 from tudatpy import constants, numerical_simulation
@@ -21,13 +20,15 @@ from tudatpy.numerical_simulation import (
     propagation_setup,
 )
 
-# Define departure/arrival epoch - in seconds since J2000
-flyby_initial_time = ...
+from integrator_analysis_helper_functions_Q2 import output_directory
+import os
+# Define departure/arrival epoch - in seconds since J2000 --> value given in the assignment3_input-2025-2026.txt
+flyby_initial_time = 1031723402.86501
 
 # student number: 1244779 --> 1244ABC
-A = ...
-B = ...
-C = ...
+A = 4
+B = 2
+C = 6
 
 orbit_initial_time = (
     35.4 * constants.JULIAN_YEAR
@@ -36,7 +37,16 @@ orbit_initial_time = (
     + C * constants.JULIAN_DAY / 24.0
 )
 
+os.makedirs(output_directory, exist_ok = True)
 output_directory = "./SimulationOutput/"
+
+
+# ===================== PHASE SUMMARY =====================
+# | Phase             | Central Body | Duration (hours) |
+# |------------------|-------------|------------------|
+# | Callisto Flyby   | Callisto    | 8                |
+# | GCO500 Orbit     | Ganymede    | 24               |
+# =========================================================
 
 central_bodies_per_phase = ["Callisto", "Ganymede"]
 initial_times_per_phase = [flyby_initial_time, orbit_initial_time]
@@ -439,7 +449,15 @@ def get_unperturbed_accelerations(
     """
 
     # Create acceleration models.
-    acceleration_models = ...
+    acceleration_settings = {
+        'JUICE': {
+            central_body: [propagation_setup.acceleration.point_mass_gravity()]
+        }
+    }
+    bodies_to_propagate = ['JUICE']
+    central_bodies = [central_body]
+    acceleration_models = propagation_setup.create_acceleration_models(bodies, acceleration_settings,  bodies_to_propagate, central_bodies)
+
 
     return acceleration_models
 
