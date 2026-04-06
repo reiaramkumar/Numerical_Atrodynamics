@@ -271,20 +271,10 @@ for current_phase in range(len(central_bodies_per_phase)):
         name=chosen_name
     ))
 
-    fig.add_annotation(
-        x=1,  # right side of plot (in paper coords)
-        y=1.0,
-        xref="paper",
-        yref="y",
-        text="Threshold line = 1 m",
-        showarrow=False,
-        font=dict(color="pink"),
-        xanchor="right",
-        yanchor="bottom"
-    )
 
+    fig.add_hline(y=1.0, line_dash='dash', line_color='pink')
     fig.add_annotation(
-        x=1,  # right side of plot (in paper coords)
+        x=1,
         y=1.0,
         xref="paper",
         yref="y",
@@ -397,6 +387,7 @@ fig.add_trace(go.Scatter(x=rk8_times, y=rk8_errors, mode="lines",
                           line=dict(color='purple'),
                           name='GCO500 Orbit:  Fixed RK8, dt = 256s'))
 
+fig.add_hline(y=1.0, line_dash='dash', line_color='pink')
 fig.add_annotation(
     x=1,  # right side of plot (in paper coords)
     y=1.0,
@@ -408,6 +399,7 @@ fig.add_annotation(
     xanchor="right",
     yanchor="bottom"
 )
+
 fig.update_layout(
 title = f'PLOT 4.2: Position Error vs Function Evaluations',
 
