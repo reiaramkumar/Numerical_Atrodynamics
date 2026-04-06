@@ -2,7 +2,7 @@
 import os
 from integrator_analysis_helper_functions_Q1 import *
 import plotly.graph_objects as go
-
+import json
 current_directory = os.getcwd()
 
 # Load spice kernels.
@@ -211,4 +211,13 @@ fig.show()
 fig.write_image(os.path.join(p_dir, f'Q1_max_error_vs_step_size.png'), width=1200, height=800)
 
 
+
+# Save Q1 max errors to file
+q1_max_errors_save = {
+    str(phase): {str(step): float(max_errors[phase][step]) for step in step_sizes}
+    for phase in range(2)
+}
+with open('q1_max_errors.json', 'w') as f:
+    json.dump(q1_max_errors_save, f)
+print("Q1 max errors saved to q1_max_errors.json")
 

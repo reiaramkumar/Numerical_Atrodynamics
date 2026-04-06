@@ -4,7 +4,7 @@ import numpy as np
 import time
 from integrator_analysis_helper_functions_Q2 import *
 import plotly.graph_objects as go
-
+import json
 current_directory = os.getcwd()
 
 # Load spice kernels.
@@ -130,6 +130,14 @@ for current_phase in range(len(central_bodies_per_phase)):
 
         # Q2b
         benchmark_difference = get_difference_wrt_benchmarks(state_history, benchmark_interpolator)
+        epochs_all = np.array(list(benchmark_difference.keys()))
+        benchmark_epochs = np.array(list(benchmark_state_history.keys()))
+        t_min = benchmark_epochs[4]
+        t_max = benchmark_epochs[-5]
+        valid_m = (epochs_all > t_min) & (epochs_all < t_max)
+        valid_e = epochs_all[valid_m]
+        benchmark_difference = {epoch: benchmark_difference[epoch] for epoch in valid_e if epoch in benchmark_difference}
+
         epochs_Q2b = np.array(list(benchmark_difference.keys()))
         times_hours_Q2b = (epochs_Q2b - current_phase_start_time) / 3600.0
 
@@ -400,9 +408,14 @@ for current_phase in range(len(central_bodies_per_phase)):
     dt = np.array(step_sizes[1:])
     errors = np.array([max_errors_step_half[current_phase][step_size] for step_size in step_sizes[1:]])
     slope = np.polyfit(np.log(dt), np.log(errors), 1)
+    errors_bench = np.array([max_errors_benchmark[current_phase][step_size] for step_size in step_sizes[1:]])
+    slope_bench = np.polyfit(np.log(dt), np.log(errors_bench), 1)
     y = slope[0] * np.log(dt) + slope[1]
-    fig.add_trace(go.Scatter(x=dt, y=errors, mode="markers", name=f'{phase_names[current_phase]} data'))
-    fig.add_trace(go.Scatter(x=dt, y=np.exp(y), mode='lines', name=f'Fit  (slope={slope[0]:.2f})'))
+    y_bench = slope_bench[0] * np.log(dt) + slope_bench[1]
+    fig.add_trace(go.Scatter(x=dt, y=errors, mode="markers", name=f'Half-step {phase_names[current_phase]} data'))
+    fig.add_trace(go.Scatter(x=dt, y=np.exp(y), mode='lines', name=f'Half-step fit  (slope={slope[0]:.2f})'))
+    fig.add_trace(go.Scatter(x=dt, y=errors_bench, mode="markers", name=f'Benchmark {phase_names[current_phase]} data'))
+    fig.add_trace(go.Scatter(x=dt, y=np.exp(y_bench), mode='lines', name=f'Benchmark fit  (slope={slope[0]:.2f})'))
 
 fig.update_layout(
     title=f'PLOT 2.5: Maximum Position Error vs Step Size (with Log–Log Best-Fit Line)',
@@ -493,3 +506,61 @@ fig.update_layout(
 )
 fig.show()
 fig.write_image(os.path.join(p_dir, f'Q2d_cpu_time_vs_step_size.png'), width=1200, height=800)
+
+with open('q1_max_errors.json', 'r') as f:
+    q1_loaded = json.load(f)
+
+q1_max_errors_gco500= {int(k): v for k, v in q1_loaded['1'].items()}
+fig = go.Figure()
+dt = np.array(step_sizes)
+q1_vals = np.array([q1_max_errors_gco500[s] for s in step_sizes])
+q2b_vals = np.array([max_errors_benchmark[1][s] for s in step_sizes])
+
+fig.add_trace(go.Scatter(x=dt, y=q1_vals, mode = 'lines+markers', line = dict(color = 'magenta'), name = 'Q1: Unperturbed (analytical)'))
+fig.add_trace(go.Scatter(x=dt, y=q2b_vals, mode = 'lines+markers', line = dict(color = 'purple'), name = 'Q2B: Perturbed (benchmark)'))
+
+fig.update_layout(
+        title=f'PLOT 2.6: Perturbed and Unperturbed Max Position Error',
+
+    xaxis = dict(
+        title='Step Size Δt (s)',
+        showline=True,
+        linecolor="white",
+        linewidth=1,
+        mirror=True,
+        ticks="outside",
+        tickcolor="white",
+    ),
+    yaxis = dict(
+        title='Max Position Error (m)',
+        showline=True,
+        linecolor="white",
+        linewidth=1,
+        mirror=True,
+        ticks="outside",
+        tickcolor="white",
+    ),
+    xaxis_type = 'log',  # x-axis type is log as step sizes vary exponentially
+    yaxis_type = 'log',
+    template = "plotly_dark",
+    font = dict(
+        family="Times New Roman",
+        size=14,
+        color="white"
+    ),
+    title_font = dict(
+        family="Times New Roman",
+        size=16,
+        color="white"
+    )
+
+)
+fig.show()
+fig.write_image(os.path.join(p_dir, 'Q2d_Q1_vs_Q2b_GCO500.png'), width=1200, height=800)
+
+print("Q2d comparison:GCO500 truncation-dominated regime:")
+print(f"{'Step size':<12} {'Q1 error (m)':<20} {'Q2b error (m)':<20} {'Ratio'}")
+for s in step_sizes:
+    q1 = q1_max_errors_gco500[s]
+    q2b = max_errors_benchmark[1][s]
+    print(f"{s:<12} {q1:<20.4e} {q2b:<20.4e} {q2b/q1:.2f}")

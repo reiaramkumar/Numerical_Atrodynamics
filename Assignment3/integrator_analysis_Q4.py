@@ -24,7 +24,8 @@ no_of_fn_evals_per_step = {
     'rkf45':           6,
     'rkf56':           8,
     'rkf78':          13,
-    'rkf78 - chosen': 13
+    'chosen': 13,
+
 }
 
 phase_names = {
@@ -136,7 +137,7 @@ for current_phase in range(len(central_bodies_per_phase)):
         ('rkf45', propagation_setup.integrator.rkf_45),
         ('rkf56', propagation_setup.integrator.rkf_56),
         ('rkf78', propagation_setup.integrator.rkf_78),
-        ('rkf78 - chosen', propagation_setup.integrator.rkf_78),
+        ('chosen', propagation_setup.integrator.rkf_78),
 
     ]
 
@@ -145,10 +146,10 @@ for current_phase in range(len(central_bodies_per_phase)):
     for label, coeff_set in variable_integrator_configs:
         results[current_phase][label] = []
         for tol in variable_tolerances:
-            if label == 'rkf78 - chosen' and tol != 1e-10:
+            if label == 'chosen' and tol != 1e-10:
                 continue
 
-            if label == 'rkf78 - chosen' and tol == 1e-10:
+            if label == 'chosen' and tol == 1e-10:
 
                 step_size_control_settings = propagation_setup.integrator.step_size_control_elementwise_scalar_tolerance(
                     1e-10, 1e-10)
@@ -191,11 +192,35 @@ for current_phase in range(len(central_bodies_per_phase)):
             time_hours = (epochs - current_phase_start_time) / 3600.0
 
             results[current_phase][label].append((max_position_error_norm, n_fn_evals))
-            if label == 'rkf78 - chosen':
+            if label == 'chosen' and current_phase==0:
                 if label not in results_all[current_phase]:
                     results_all[current_phase][label] = []
                 results_all[current_phase][label].append((time_hours, position_error))
+    if current_phase == 1:
+        rk8_chosen_settings = propagation_setup.integrator.runge_kutta_fixed_step_size(
+            256.0, propagation_setup.integrator.rkf_78, propagation_setup.integrator.higher)
+        rk8_propagator = propagation_setup.propagator.translational(
+            central_bodies=[current_central_body],
+            acceleration_models=perturbed_acceleration_models,
+            bodies_to_integrate=['JUICE'],
+            initial_states=initial_state,
+            initial_time=current_phase_start_time,
+            integrator_settings=rk8_chosen_settings,
+            termination_settings=termination_condition,
+        )
+        rk8_simulator = numerical_simulation.create_dynamics_simulator(bodies, rk8_propagator)
+        rk8_state_history = rk8_simulator.propagation_results.state_history
 
+        rk8_benchmark_difference = get_difference_wrt_benchmarks(rk8_state_history, benchmark_interpolator)
+        rk8_state_difference = np.vstack(list(rk8_benchmark_difference.values()))
+        rk8_position_error = np.linalg.norm(rk8_state_difference[:, :3], axis=1)
+        rk8_max_position_error_norm = np.max(rk8_position_error)
+
+        rk8_n_steps = len(rk8_state_history) - 1  # why? as no of steps correspond to +1 states
+        rk8_n_fn_evals = rk8_n_steps * no_of_fn_evals_per_step['rk8']
+        rk8_epochs = np.array(list(rk8_benchmark_difference.keys()))
+        rk8_times_hours = (rk8_epochs - current_phase_start_time) / 3600.0
+        results_all[1]['rk8_chosen'] = [(rk8_times_hours, rk8_position_error)]
 
 # ......................................................................................................................
 #                                               PLOTS
@@ -208,7 +233,7 @@ integrator_styles = {
     'rkf45':            dict(dash='solid',  color='red'),
     'rkf56':            dict(dash='solid',  color='green'),
     'rkf78':            dict(dash='solid',  color='blue'),
-    'rkf78 - chosen':   dict(dash='dot',    color='purple'),
+    'chosen':   dict(dash='dot',    color='purple'),
     }
 
 integrator_labels = {
@@ -218,7 +243,7 @@ integrator_labels = {
     'rkf45': 'Variable RKF4(5)',
     'rkf56': 'Variable RKF5(6)',
     'rkf78': 'Variable RKF7(8)',
-    'rkf78 - chosen': 'Variable RKF7(8), tol=1e-10',
+    'chosen': 'Variable RKF7(8), tol=1e-10',
 }
 
 # .... PLOT 4.1: MAXIMUM ERROR vs FUNCTION EVALUATIONS PLOT ....
@@ -226,14 +251,49 @@ integrator_labels = {
 for current_phase in range(len(central_bodies_per_phase)):
     fig = go.Figure()
     for label in integrator_styles:
-        errors = [r[0] for  r in results[current_phase][label]]
+        if label == 'chosen':
+            continue
+        errors = [r[0] for r in results[current_phase][label]]
         max_vals = [r[1] for r in results[current_phase][label]]
-        if label == 'rkf78 - chosen':
-            fig.add_trace(go.Scatter(x = max_vals, y=errors, mode="lines+markers", marker=dict(symbol='star', size=14, color='gold'),
-                                     line=integrator_styles[label], name=integrator_labels[label]))
-        else:
-            fig.add_trace(go.Scatter(x = max_vals, y=errors, mode="lines+markers", line=integrator_styles[label], name=integrator_labels[label]))
+        fig.add_trace(go.Scatter(x = max_vals, y=errors, mode="lines+markers", line=integrator_styles[label], name=integrator_labels[label]))
+    if current_phase == 0:
+        chosen_err = results[0]['rkf78'][2][0]  # tol=1e-10 is index 2
+        chosen_eval = results[0]['rkf78'][2][1]
+        chosen_name = 'Variable RKF7(8) tol=1e-10 [CHOSEN]'
+    else:
+        chosen_err = results[1]['rk8'][5][0]  # dt=256s is index 5
+        chosen_eval = results[1]['rk8'][5][1]
+        chosen_name = 'Fixed RK8 dt=256s [CHOSEN]'
 
+    fig.add_trace(go.Scatter(
+        x=[chosen_eval], y=[chosen_err], mode='markers',
+        marker=dict(symbol='star', size=16, color='gold'),
+        name=chosen_name
+    ))
+
+    fig.add_annotation(
+        x=1,  # right side of plot (in paper coords)
+        y=1.0,
+        xref="paper",
+        yref="y",
+        text="Threshold line = 1 m",
+        showarrow=False,
+        font=dict(color="pink"),
+        xanchor="right",
+        yanchor="bottom"
+    )
+
+    fig.add_annotation(
+        x=1,  # right side of plot (in paper coords)
+        y=1.0,
+        xref="paper",
+        yref="y",
+        text="Threshold line = 1 m",
+        showarrow=False,
+        font=dict(color="pink"),
+        xanchor="right",
+        yanchor="bottom"
+    )
     fig.update_layout(
     title = f'PLOT 4.1: Maximum Position Error vs Function Evaluations in {phase_names[current_phase]}',
 
@@ -325,14 +385,29 @@ if current_phase == 1:
 
 # .... PLOT 4.2: ....
 fig = go.Figure()
-for current_phase in range(len(central_bodies_per_phase)):
-    for label in integrator_styles:
-        if label == 'rkf78 - chosen':
-            times = results_all[current_phase]['rkf78 - chosen'][0][0]
-            errors = results_all[current_phase]['rkf78 - chosen'][0][1]
-            fig.add_trace(go.Scatter(x = times, y=errors, mode="lines+markers", marker=dict(symbol='star', size=12, color='gold'),
-                                     line=integrator_styles[label], name=f'{phase_names[current_phase]}, Variable {integrator_labels[label]}, tol = 1e-10'))
 
+flyby_times = results_all[0]['chosen'][0][0]
+rk8_times = results_all[1]['rk8_chosen'][0][0]
+flyby_errors = results_all[0]['chosen'][0][1]
+rk8_errors = results_all[1]['rk8_chosen'][0][1]
+fig.add_trace(go.Scatter(x=flyby_times, y=flyby_errors, mode="lines",
+                          line=dict(color='pink'),
+                          name='Callisto Flyby:  Variable RKF7(8), tol = 1e-10'))
+fig.add_trace(go.Scatter(x=rk8_times, y=rk8_errors, mode="lines",
+                          line=dict(color='purple'),
+                          name='GCO500 Orbit:  Fixed RK8, dt = 256s'))
+
+fig.add_annotation(
+    x=1,  # right side of plot (in paper coords)
+    y=1.0,
+    xref="paper",
+    yref="y",
+    text="Threshold line = 1 m",
+    showarrow=False,
+    font=dict(color="pink"),
+    xanchor="right",
+    yanchor="bottom"
+)
 fig.update_layout(
 title = f'PLOT 4.2: Position Error vs Function Evaluations',
 
@@ -372,3 +447,38 @@ title_font=dict(
 
 fig.show()
 fig.write_image(os.path.join(p_dir, f'Q4b_pos_error_vs_time.png'), width=1200, height=800)
+
+print(f"\n{'*' * 85}")
+print(f"{'INTEGRATOR PERFORMANCE SUMMARY':^85}")
+print(f"{'*' * 85}")
+
+for current_phase in range(2):
+    print(f"\n{phase_names[current_phase].upper()}")
+    print(f"{'.' * 85}")
+    print(f"{'Integrator':<30} {'Setting':<15} {'Max Error (m)':<20} {'Fn Evals':<15} {'< 1m?'}")
+    print(f"{'.' * 85}")
+
+    # Fixed step integrators
+    for label, dt_list in [('rk4', fixed_time_steps), ('rk6', fixed_time_steps), ('rk8', fixed_time_steps)]:
+        for i, dt in enumerate(dt_list):
+            err, evals = results[current_phase][label][i]
+            print(f"{integrator_labels[label]:<30} {'dt=' + str(dt) + 's':<15} {err:<20.4e} {evals:<15} {'YES' if err < 1.0 else 'NO'}")
+
+    print(f"{'-' * 85}")
+
+    # Variable step integrators
+    for label in ['rkf45', 'rkf56', 'rkf78']:
+        for i, tol in enumerate(variable_tolerances):
+            err, evals = results[current_phase][label][i]
+            print(f"{integrator_labels[label]:<30} {'tol=' + str(tol):<15} {err:<20.4e} {evals:<15} {'YES' if err < 1.0 else 'NO'}")
+
+    print(f"{'-' * 85}")
+
+    # Chosen integrator
+    if current_phase == 0:
+        err, evals = results[0]['chosen'][0]
+        print(
+            f"{'Variable RKF7(8) CHOSEN':<30} {'tol=1e-10':<15} {err:<20.4e} {evals:<15} {'YES' if err < 1.0 else 'NO'}")
+    else:
+        print(
+            f"{'Fixed RK8 CHOSEN':<30} {'dt=256s':<15} {rk8_max_position_error_norm:<20.4e} {rk8_n_fn_evals:<15} {'YES' if rk8_max_position_error_norm < 1.0 else 'NO'}")

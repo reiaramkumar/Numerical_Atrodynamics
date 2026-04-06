@@ -9,6 +9,8 @@ import os
 import numpy as np
 import plotly.graph_objects as go
 from integrator_analysis_helper_functions_Q2 import *
+import tudatpy.kernel.astro.element_conversion as ec
+from scipy.stats import linregress
 
 current_directory = os.getcwd()
 
@@ -479,3 +481,91 @@ fig.update_layout(
 
 fig.show()
 fig.write_image(os.path.join(p_dir, f'Q3d_pos_error_vs_time_{current_phase}_bw.png'), width=1200, height=800)
+
+
+
+# Get initial state for GCO500
+initial_state_gco500 = spice.get_body_cartesian_state_at_epoch(
+    target_body_name="JUICE",
+    observer_body_name="Ganymede",
+    reference_frame_name=global_frame_orientation,
+    aberration_corrections="NONE",
+    ephemeris_time=initial_times_per_phase[1],  # GCO500 phase
+)
+
+# Convert to Keplerian elements
+mu_ganymede = bodies.get("Ganymede").gravitational_parameter
+keplerian_state = ec.cartesian_to_keplerian(initial_state_gco500[:6], mu_ganymede)
+
+print(f"Semi-major axis:  {keplerian_state[0]/1000:.2f} km")
+print(f"Eccentricity:     {keplerian_state[1]:.6f}")
+print(f"Inclination:      {np.degrees(keplerian_state[2]):.2f} deg")
+print(f"Orbital period:   {2*np.pi*np.sqrt(keplerian_state[0]**3/mu_ganymede)/3600:.2f} hours")
+print(f"Orbital period: {2*np.pi*np.sqrt(keplerian_state[0]**3/mu_ganymede)/3600:.4f} hours")
+print(f"Orbital period: {2*np.pi*np.sqrt(keplerian_state[0]**3/mu_ganymede):.1f} seconds")
+
+
+
+T = 11013.2  # orbital period in seconds
+t0 = initial_times_per_phase[1]  # GCO500 start time
+
+# Approximate dip times from your plot (in hours, convert to seconds)
+dip_times_hours = [0.5, 1.35, 2.1, 2.9]
+dip_times_seconds = [t * 3600 for t in dip_times_hours]
+
+print(f"Orbital period: {T:.1f} s = {T / 3600:.4f} h\n")
+
+for i, dt in enumerate(dip_times_seconds):
+    epoch = t0 + dt
+
+    # Get cartesian state at this epoch
+    state = spice.get_body_cartesian_state_at_epoch(
+        target_body_name="JUICE",
+        observer_body_name="Ganymede",
+        reference_frame_name=global_frame_orientation,
+        aberration_corrections="NONE",
+        ephemeris_time=epoch,
+    )
+
+    # Convert to Keplerian
+    kep = ec.cartesian_to_keplerian(state[:6], mu_ganymede)
+
+    sma = kep[0] / 1000  # km
+    ecc = kep[1]
+    inc = np.degrees(kep[2])
+    raan = np.degrees(kep[3])
+    aop = np.degrees(kep[4])
+    ta = np.degrees(kep[5]) % 360  # true anomaly 0-360
+    r = np.linalg.norm(state[:3]) / 1000  # km from Ganymede centre
+    lat = np.degrees(np.arcsin(state[2] / np.linalg.norm(state[:3])))  # latitude
+
+    print(f"Dip {i + 1} at t = {dip_times_hours[i]} h:")
+    print(f"  r (distance)    = {r:.1f} km")
+    print(f"  true anomaly    = {ta:.1f} deg")
+    print(f"  latitude        = {lat:.1f} deg")
+    print(f"  Expected:       ", end="")
+    if ta < 30 or ta > 330:
+        print("periapsis (TA ~ 0)")
+    elif 150 < ta < 210:
+        print("apoapsis (TA ~ 180)")
+    elif lat > 60:
+        print("north pole pass")
+    elif lat < -60:
+        print("south pole pass")
+    else:
+        print("equatorial region")
+    print()
+
+
+for current_phase in range(2):
+    tols = np.array(integration_tolerances)
+    max_vals = np.array([max_errors_benchmark[current_phase][tol] for tol in integration_tolerances])
+    slope, intercept, r, p, se = linregress(np.log10(tols), np.log10(max_vals))
+    print(f"{phase_names[current_phase]}: slope = {slope:.2f}")
+
+for tol in integration_tolerances:
+    _, errors_ref = error_histories_benchmark[1][tol]
+    times_bw, errors_bw = blockwise_error_histories[1][tol]
+    print(f"tol={tol:.0e}: elementwise max={np.max(errors_ref):.4e} m, "
+          f"blockwise max={np.max(errors_bw):.4e} m, "
+          f"ratio={np.max(errors_bw)/np.max(errors_ref):.2f}x")

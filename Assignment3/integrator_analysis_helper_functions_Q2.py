@@ -19,7 +19,6 @@ from tudatpy.numerical_simulation import (
     environment_setup,
     propagation_setup,
 )
-
 # Define departure/arrival epoch - in seconds since J2000 --> value given in the assignment3_input-2025-2026.txt
 flyby_initial_time = 1031723402.86501
 
@@ -452,7 +451,7 @@ def get_unperturbed_accelerations(
         }
     }
     bodies_to_propagate = ['JUICE']
-    acceleration_models = propagation_setup.create_acceleration_models(bodies, acceleration_settings, bodies_to_propagate)
+    acceleration_models = propagation_setup.create_acceleration_models(bodies, acceleration_settings, bodies_to_propagate, [central_body])
 
 
     return acceleration_models
