@@ -14,8 +14,12 @@ bodies = create_bodies()
 #                                               INITIAL SETUP
 # ......................................................................................................................
 
-fixed_time_steps = [2 ** n for n in range(3, 10)]
-variable_tolerances = [1e-14, 1e-12, 1e-10, 1e-8, 1e-6]
+# fixed_time_steps = [2 ** n for n in range(3, 10)]
+# variable_tolerances = [1e-14, 1e-12, 1e-10, 1e-8, 1e-6]
+# benchmark_step_size = 10.0 if current_central_body == 'Callisto' else 20.0
+step_sizes = [0.03125, 0.0625, 0.125, 0.25, 0.5, 1.0, 2.0]
+variable_tolerances = [1e-14, 1e-12, 1e-10, 1e-8, 1e-6, 1e-4, 1e-2]
+benchmark_step_size = 0.03125
 
 no_of_fn_evals_per_step = {
     'rk4':             4,
@@ -67,7 +71,6 @@ for current_phase in range(len(central_bodies_per_phase)):
 #                                               BENCHMARK ROUTINE
 # ......................................................................................................................
 
-    benchmark_step_size = 10.0 if current_central_body == 'Callisto' else 20.0
     benchmark_integrator_settings = get_fixed_step_size_integrator_settings(benchmark_step_size)
 
     perturbed_propagator_settings = propagation_setup.propagator.translational(

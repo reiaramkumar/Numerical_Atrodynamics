@@ -264,7 +264,7 @@ if __name__ == "__main__":
 
     # 1. INITIAL SETUP + USING SAME REFERENCE LAMBERT ARC AS 3 A
     np.random.seed(10)
-    no_of_runs = 1000
+    no_of_runs = 100
     std_dev_mc  = 0.4 * np.linalg.norm(p)
     tolerance_mc = 1e-3  # or  np.linalg.norm(r_bar_target) * 1e-6
     max_iterations_mc = 5
